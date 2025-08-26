@@ -1,8 +1,9 @@
 {
   "functions": {
     "app/api/scan/route.ts": {
-      "memory": 1536,
-      "maxDuration": 90
+      "memory": 2048,
+      "maxDuration": 120,
+      "includeFiles": "node_modules/@sparticuz/chromium/**"
     }
   }
 }
