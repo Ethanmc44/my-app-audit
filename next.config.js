@@ -4,9 +4,9 @@ const nextConfig = {
   typescript: { ignoreBuildErrors: true },
   experimental: {
     outputFileTracingIncludes: {
-      'app/api/scan/route': ['node_modules/@sparticuz/chromium/**'],
-    },
-  },
+      'app/api/scan/route': ['node_modules/@sparticuz/chromium/**']
+    }
+  }
 };
 
 module.exports = nextConfig;
