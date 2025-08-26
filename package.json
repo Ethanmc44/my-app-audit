@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@axe-core/puppeteer": "^4.10.2",
-    "@sparticuz/chromium": "^138.0.2",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.56.0",
     "axe-core": "^4.10.3",
@@ -31,6 +30,6 @@
     "eslint-config-next": "15.5.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vercel": "^32.0.1"
+    "vercel": "^46.0.3"
   }
 }

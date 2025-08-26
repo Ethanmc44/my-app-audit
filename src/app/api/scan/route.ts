@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 import { AxePuppeteer } from '@axe-core/puppeteer';
 
@@ -13,64 +12,36 @@ export async function POST(req: Request) {
   let browser: puppeteer.Browser | null = null;
 
   try {
-    console.log('[scan] request started');
-
     const { siteId }: ScanReq = await req.json();
-    if (!siteId) {
-      console.error('[scan] missing siteId');
-      return NextResponse.json({ error: 'siteId required' }, { status: 400 });
-    }
+    if (!siteId) return NextResponse.json({ error: 'siteId required' }, { status: 400 });
 
     const supabase = getSupabaseAdmin();
+
     const { data: site, error: siteErr } = await supabase
       .from('sites')
       .select('url')
       .eq('id', siteId)
       .single();
-
-    if (siteErr || !site?.url) {
-      console.error('[scan] site lookup failed', siteErr);
-      return NextResponse.json({ error: 'site not found' }, { status: 404 });
-    }
-
-    console.log('[scan] scanning URL:', site.url);
+    if (siteErr || !site?.url) return NextResponse.json({ error: 'site not found' }, { status: 404 });
 
     const { data: scanRow, error: scanErr } = await supabase
       .from('scans')
       .insert({ site_id: siteId, score: null })
       .select('id')
       .single();
+    if (scanErr) return NextResponse.json({ error: scanErr.message }, { status: 500 });
 
-    if (scanErr) {
-      console.error('[scan] scan insert failed', scanErr);
-      return NextResponse.json({ error: scanErr.message }, { status: 500 });
-    }
+    const ws = process.env.BROWSERLESS_WS;
+    if (!ws) return NextResponse.json({ error: 'BROWSERLESS_WS missing' }, { status: 500 });
 
-    chromium.setHeadlessMode = true;
-    chromium.setGraphicsMode = false;
-
-    console.log('[scan] getting chromium executablePath...');
-    const executablePath = await chromium.executablePath();
-    console.log('[scan] executablePath:', executablePath);
-
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath,
-      headless: chromium.headless
-    });
-
+    browser = await puppeteer.connect({ browserWSEndpoint: ws });
     const page = await browser.newPage();
-    console.log('[scan] opening page...');
     await page.goto(site.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
 
-    console.log('[scan] running axe-core...');
     const axe = new AxePuppeteer(page);
     const analysis = await axe.analyze();
 
     const violations = analysis.violations || [];
-    console.log('[scan] violations found:', violations.length);
-
     const issues = violations
       .flatMap(v =>
         v.nodes.slice(0, 5).map(n => ({
@@ -87,28 +58,17 @@ export async function POST(req: Request) {
     const score = Math.max(0, 100 - violations.length * 2);
 
     if (issues.length) {
-      console.log('[scan] inserting issues:', issues.length);
       const { error: insErr } = await supabase.from('issues').insert(issues);
-      if (insErr) {
-        console.error('[scan] insert issues failed', insErr);
-        return NextResponse.json({ error: insErr.message }, { status: 500 });
-      }
+      if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
 
     const { error: updErr } = await supabase.from('scans').update({ score }).eq('id', scanRow.id);
-    if (updErr) {
-      console.error('[scan] update score failed', updErr);
-      return NextResponse.json({ error: updErr.message }, { status: 500 });
-    }
+    if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
 
-    console.log('[scan] finished successfully');
     return NextResponse.json({ scanId: scanRow.id, score });
   } catch (e: any) {
-    console.error('[scan error]', e);
     return NextResponse.json({ error: e.message || 'scan failed' }, { status: 500 });
   } finally {
-    if (browser) {
-      await browser.close().catch(err => console.error('[scan] browser close error', err));
-    }
+    if (browser) await browser.close().catch(() => {});
   }
 }
