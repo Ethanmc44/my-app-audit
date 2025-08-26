@@ -3,7 +3,6 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 import { AxePuppeteer } from '@axe-core/puppeteer';
-import path from 'path';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,12 +18,8 @@ export async function POST(req: Request) {
 
     const supabase = getSupabaseAdmin();
 
-    const { data: site, error: siteErr } = await supabase
-      .from('sites')
-      .select('url')
-      .eq('id', siteId)
-      .single();
-    if (siteErr || !site?.url) return NextResponse.json({ error: 'site not found' }, { status: 404 });
+    const { data: site } = await supabase.from('sites').select('url').eq('id', siteId).single();
+    if (!site?.url) return NextResponse.json({ error: 'site not found' }, { status: 404 });
 
     const { data: scanRow, error: scanErr } = await supabase
       .from('scans')
@@ -33,9 +28,9 @@ export async function POST(req: Request) {
       .single();
     if (scanErr) return NextResponse.json({ error: scanErr.message }, { status: 500 });
 
+    // Configure chromium for serverless
     chromium.setHeadlessMode = true;
     chromium.setGraphicsMode = false;
-    chromium.setBrotliPath(path.join(process.cwd(), 'node_modules', '@sparticuz', 'chromium', 'bin'));
 
     const executablePath = await chromium.executablePath();
 
