@@ -5,7 +5,10 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['@sparticuz/chromium'],
     outputFileTracingIncludes: {
-      'app/api/scan/route': ['./node_modules/@sparticuz/chromium/**']
+      'app/api/scan/route': [
+        './node_modules/@sparticuz/chromium/bin/**',
+        './node_modules/@sparticuz/chromium/build/**'
+      ]
     }
   }
 };
