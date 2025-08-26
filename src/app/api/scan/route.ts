@@ -8,6 +8,13 @@ export const dynamic = 'force-dynamic';
 
 type ScanReq = { siteId: string };
 
+function wsToHttpPressure(wsUrl: string) {
+  // wss://chrome.browserless.io?token=XXX  -> https://chrome.browserless.io/pressure?token=XXX
+  const u = new URL(wsUrl);
+  const token = u.searchParams.get('token') || '';
+  return `https://chrome.browserless.io/pressure?token=${token}`;
+}
+
 export async function POST(req: Request) {
   let browser: puppeteer.Browser | null = null;
 
@@ -24,7 +31,18 @@ export async function POST(req: Request) {
     if (scanErr) return NextResponse.json({ error: scanErr.message }, { status: 500 });
 
     const raw = (process.env.BROWSERLESS_WS || '').trim();
-    if (!raw || !raw.startsWith('wss://')) return NextResponse.json({ error: 'BROWSERLESS_WS missing/invalid' }, { status: 500 });
+    if (!raw || !raw.startsWith('wss://chrome.browserless.io')) {
+      return NextResponse.json({ error: 'BROWSERLESS_WS missing or malformed' }, { status: 500 });
+    }
+
+    // Preflight: check token/quota
+    const probe = await fetch(wsToHttpPressure(raw), { method: 'GET' });
+    if (probe.status === 403) {
+      return NextResponse.json({ error: 'Browserless 403: invalid/revoked token or no quota' }, { status: 500 });
+    }
+    if (!probe.ok) {
+      return NextResponse.json({ error: `Browserless preflight failed: ${probe.status}` }, { status: 500 });
+    }
 
     browser = await puppeteer.connect({ browserWSEndpoint: raw, ignoreHTTPSErrors: true });
     const page = await browser.newPage();
@@ -46,12 +64,10 @@ export async function POST(req: Request) {
     ).slice(0, 50);
 
     const score = Math.max(0, 100 - violations.length * 2);
-
     if (issues.length) {
       const { error: insErr } = await supabase.from('issues').insert(issues);
       if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
-
     const { error: updErr } = await supabase.from('scans').update({ score }).eq('id', scanRow.id);
     if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
 
