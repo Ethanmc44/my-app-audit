@@ -16,44 +16,34 @@ export async function POST(req: Request) {
     if (!siteId) return NextResponse.json({ error: 'siteId required' }, { status: 400 });
 
     const supabase = getSupabaseAdmin();
-
-    const { data: site, error: siteErr } = await supabase
-      .from('sites')
-      .select('url')
-      .eq('id', siteId)
-      .single();
+    const { data: site, error: siteErr } = await supabase.from('sites').select('url').eq('id', siteId).single();
     if (siteErr || !site?.url) return NextResponse.json({ error: 'site not found' }, { status: 404 });
 
     const { data: scanRow, error: scanErr } = await supabase
-      .from('scans')
-      .insert({ site_id: siteId, score: null })
-      .select('id')
-      .single();
+      .from('scans').insert({ site_id: siteId, score: null }).select('id').single();
     if (scanErr) return NextResponse.json({ error: scanErr.message }, { status: 500 });
 
-    const ws = process.env.BROWSERLESS_WS;
-    if (!ws) return NextResponse.json({ error: 'BROWSERLESS_WS missing' }, { status: 500 });
+    const raw = (process.env.BROWSERLESS_WS || '').trim();
+    if (!raw || !raw.startsWith('wss://')) return NextResponse.json({ error: 'BROWSERLESS_WS missing/invalid' }, { status: 500 });
 
-    browser = await puppeteer.connect({ browserWSEndpoint: ws });
+    browser = await puppeteer.connect({ browserWSEndpoint: raw, ignoreHTTPSErrors: true });
     const page = await browser.newPage();
-    await page.goto(site.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page.goto(site.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     const axe = new AxePuppeteer(page);
     const analysis = await axe.analyze();
 
     const violations = analysis.violations || [];
-    const issues = violations
-      .flatMap(v =>
-        v.nodes.slice(0, 5).map(n => ({
-          scan_id: scanRow.id,
-          severity: (v.impact as string) || 'moderate',
-          type: v.id,
-          message: v.help,
-          selector: n.target?.[0] || null,
-          fix: { helpUrl: v.helpUrl, html: n.html }
-        }))
-      )
-      .slice(0, 50);
+    const issues = violations.flatMap(v =>
+      v.nodes.slice(0, 5).map(n => ({
+        scan_id: scanRow.id,
+        severity: (v.impact as string) || 'moderate',
+        type: v.id,
+        message: v.help,
+        selector: n.target?.[0] || null,
+        fix: { helpUrl: v.helpUrl, html: n.html }
+      }))
+    ).slice(0, 50);
 
     const score = Math.max(0, 100 - violations.length * 2);
 
@@ -67,7 +57,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ scanId: scanRow.id, score });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message || 'scan failed' }, { status: 500 });
+    return NextResponse.json({ error: e?.message || 'scan failed' }, { status: 500 });
   } finally {
     if (browser) await browser.close().catch(() => {});
   }
