@@ -2,10 +2,7 @@
   "functions": {
     "app/api/scan/route.ts": {
       "maxDuration": 120,
-      "includeFiles": [
-        "node_modules/@sparticuz/chromium/bin/**",
-        "node_modules/@sparticuz/chromium/build/**"
-      ]
+      "includeFiles": "node_modules/@sparticuz/chromium/**"
     }
   }
 }
