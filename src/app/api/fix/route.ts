@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,8 +11,8 @@ const SYSTEM = `You are an accessibility engineer. Given an issue (rule id, seve
 3) Minimal code (HTML/CSS/ARIA) snippet.
 Return JSON with keys: explanation, fix, code.`;
 
-type Req = {
-  issueId: string;       // NEW: we will save against this issue
+type FixRequest = {
+  issueId: string;
   rule: string;
   severity: string;
   message: string;
@@ -20,46 +20,47 @@ type Req = {
   selector?: string | null;
 };
 
-function fakeFix(rule: string, html?: string | null) {
+type FixResult = { explanation: string; fix: string; code: string };
+
+function fakeFix(rule: string, html?: string | null): FixResult {
   const r = rule.toLowerCase();
-  if (r.includes('image') || r.includes('alt')) {
+  if (r.includes('alt') || r.includes('image')) {
     return {
-      explanation: 'Images need alternative text so screen readers can describe them.',
-      fix: 'Add a meaningful alt attribute that describes the image’s purpose.',
-      code: `<img src="hero.jpg" alt="Team working in the office">`,
+      explanation: 'Images need alternative text.',
+      fix: 'Add a meaningful alt attribute.',
+      code: `<img src="hero.jpg" alt="Team working in an office">`,
     };
   }
-  if (r.includes('label') || r.includes('name-role-value')) {
+  if (r.includes('label') || r.includes('name')) {
     return {
-      explanation: 'Interactive controls must have accessible names.',
-      fix: 'Link inputs to labels with for/id or add aria-label.',
+      explanation: 'Interactive controls need accessible names.',
+      fix: 'Associate a label or add aria-label.',
       code: `<label for="email">Email</label>\n<input id="email" type="email">`,
     };
   }
   if (r.includes('contrast')) {
     return {
-      explanation: 'Text needs sufficient contrast against its background.',
-      fix: 'Increase contrast to meet WCAG 2.1 AA (4.5:1 normal text).',
-      code: `.button { color: #111; background:#fff; }`,
+      explanation: 'Text must meet contrast ratios.',
+      fix: 'Increase contrast to at least 4.5:1 for body text.',
+      code: `.btn { color:#111; background:#fff; }`,
     };
   }
   return {
     explanation: 'General accessibility issue.',
-    fix: 'Apply the referenced WCAG rule and use semantic HTML. Add ARIA only when needed.',
-    code: html ? `<!-- Review and correct -->\n${html}` : '<!-- Provide semantic HTML and labels -->',
+    fix: 'Apply the relevant WCAG guidance and use semantic HTML.',
+    code: html ? html : '<!-- Add labels, roles, and semantics as needed -->',
   };
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json()) as Req;
-  if (!body.issueId) {
-    return NextResponse.json({ error: 'issueId required' }, { status: 400 });
-  }
+  const body: FixRequest = await req.json();
+  if (!body.issueId) return NextResponse.json({ error: 'issueId required' }, { status: 400 });
 
-  // 1) If USE_FAKE_FIXES is set, return a stub and save it
+  const supabase = getSupabaseAdmin();
+
   if (process.env.USE_FAKE_FIXES === 'true') {
     const out = fakeFix(body.rule, body.html);
-    const { data: saved, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from('fixes')
       .insert({
         issue_id: body.issueId,
@@ -67,18 +68,17 @@ export async function POST(req: Request) {
         fix: out.fix,
         code: out.code,
       })
-      .select('id, issue_id, explanation, fix, code, created_at')
+      .select('id,issue_id,explanation,fix,code,created_at')
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(saved);
+    return NextResponse.json(data);
   }
 
-  // 2) Try OpenAI
   try {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY missing');
-    }
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) throw new Error('OPENAI_API_KEY missing');
+
+    const client = new OpenAI({ apiKey });
 
     const resp = await client.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -91,11 +91,14 @@ export async function POST(req: Request) {
     });
 
     const content = resp.choices[0]?.message?.content || '{}';
-    let json: any = {};
-    try { json = JSON.parse(content); } catch { json = { explanation: content }; }
+    let json: Partial<FixResult> = {};
+    try {
+      json = JSON.parse(content) as FixResult;
+    } catch {
+      json = { explanation: content, fix: '', code: '' };
+    }
 
-    // 3) Save to Supabase
-    const { data: saved, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from('fixes')
       .insert({
         issue_id: body.issueId,
@@ -103,15 +106,14 @@ export async function POST(req: Request) {
         fix: json.fix ?? null,
         code: json.code ?? null,
       })
-      .select('id, issue_id, explanation, fix, code, created_at')
+      .select('id,issue_id,explanation,fix,code,created_at')
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    return NextResponse.json(saved);
-  } catch (e: any) {
-    // 4) On quota/other errors, fallback + save
+    return NextResponse.json(data);
+  } catch {
     const out = fakeFix(body.rule, body.html);
-    const { data: saved, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from('fixes')
       .insert({
         issue_id: body.issueId,
@@ -119,9 +121,9 @@ export async function POST(req: Request) {
         fix: out.fix,
         code: out.code,
       })
-      .select('id, issue_id, explanation, fix, code, created_at')
+      .select('id,issue_id,explanation,fix,code,created_at')
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(saved);
+    return NextResponse.json(data);
   }
 }
