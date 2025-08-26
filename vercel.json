@@ -3,7 +3,10 @@
     "app/api/scan/route.ts": {
       "memory": 2048,
       "maxDuration": 120,
-      "includeFiles": "node_modules/@sparticuz/chromium/**"
+      "includeFiles": [
+        "node_modules/@sparticuz/chromium/**",
+        "node_modules/@sparticuz/chromium/bin/**"
+      ]
     }
   }
 }

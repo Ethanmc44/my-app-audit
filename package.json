@@ -31,6 +31,6 @@
     "eslint-config-next": "15.5.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vercel": "^46.0.2"
+    "vercel": "^32.0.1"
   }
 }
