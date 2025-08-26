@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@axe-core/puppeteer": "^4.10.2",
-    "@sparticuz/chromium-min": "^138.0.2",
+    "@sparticuz/chromium": "^138.0.2",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.56.0",
     "axe-core": "^4.10.3",
