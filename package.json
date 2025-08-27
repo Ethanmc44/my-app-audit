@@ -11,33 +11,27 @@
   "dependencies": {
     "@axe-core/puppeteer": "^4.10.2",
     "@sparticuz/chromium": "^138.0.2",
-    "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.56.0",
-    "axe-core": "^4.10.3",
     "next": "15.5.2",
     "openai": "^5.16.0",
-    "playwright": "^1.55.0",
     "puppeteer-core": "^24.17.0",
     "react": "19.1.1",
     "react-dom": "19.1.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^24",
     "@types/react": "^19",
-    "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.5.2",
-    "tailwindcss": "^4",
-    "typescript": "^5",
-    "vercel": "^46.0.5"
+    "typescript": "^5"
   },
   "overrides": {
     "undici": "^6.19.8",
     "follow-redirects": "^1.15.6",
     "tar": "^6.2.1",
     "semver": "^7.6.3",
-    "debug": "^4.3.7"
+    "debug": "^4.3.7",
+    "esbuild": "^0.24.3",
+    "path-to-regexp": "^8.2.0"
   }
 }
