@@ -43,3 +43,9 @@ next-env.d.ts
 .env*
 .env.local
 *.key
+.env
+.env*
+.env.local
+*.key
+node_modules/
+.next/
