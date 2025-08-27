@@ -1,5 +1,8 @@
+cat > src/app/api/scan/route.ts <<'EOF'
+import '@/app/api/scan/_chromium-keep';
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 import { AxePuppeteer } from '@axe-core/puppeteer';
 
@@ -31,15 +34,17 @@ export async function POST(req: Request) {
       .single();
     if (scanErr) return NextResponse.json({ error: scanErr.message }, { status: 500 });
 
-    const raw = (process.env.BROWSERLESS_WS || '').trim();
-    if (!raw) return NextResponse.json({ error: 'BROWSERLESS_WS not set' }, { status: 500 });
+    chromium.setHeadlessMode = true;
+    chromium.setGraphicsMode = false;
 
-    // normalize: remove any trailing dot from hostname only
-    const u = new URL(raw);
-    u.hostname = u.hostname.replace(/\.$/, '');
-    const ws = u.toString();
+    const executablePath = await chromium.executablePath();
 
-    browser = await puppeteer.connect({ browserWSEndpoint: ws, ignoreHTTPSErrors: true });
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath,
+      headless: chromium.headless
+    });
 
     const page = await browser.newPage();
     await page.goto(site.url, { waitUntil: 'networkidle0', timeout: 60000 });
@@ -78,3 +83,4 @@ export async function POST(req: Request) {
     if (browser) await browser.close().catch(() => {});
   }
 }
+EOF
