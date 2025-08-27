@@ -17,7 +17,6 @@ export async function POST(req: Request) {
 
     const supabase = getSupabaseAdmin();
 
-    // 1) get site
     const { data: site, error: siteErr } = await supabase
       .from('sites')
       .select('url')
@@ -25,7 +24,6 @@ export async function POST(req: Request) {
       .single();
     if (siteErr || !site?.url) return NextResponse.json({ error: 'site not found' }, { status: 404 });
 
-    // 2) create scan row
     const { data: scanRow, error: scanErr } = await supabase
       .from('scans')
       .insert({ site_id: siteId, score: null })
@@ -33,24 +31,22 @@ export async function POST(req: Request) {
       .single();
     if (scanErr) return NextResponse.json({ error: scanErr.message }, { status: 500 });
 
-    // 3) connect to Browserless (hosted chrome)
-    const ws = (process.env.BROWSERLESS_WS || '').trim();
-    if (!ws.startsWith('wss://'))
-      return NextResponse.json({ error: 'BROWSERLESS_WS missing or malformed' }, { status: 500 });
+    const raw = (process.env.BROWSERLESS_WS || '').trim();
+    if (!raw) return NextResponse.json({ error: 'BROWSERLESS_WS not set' }, { status: 500 });
 
-    browser = await puppeteer.connect({
-      browserWSEndpoint: ws,
-      ignoreHTTPSErrors: true
-    });
+    // normalize: remove any trailing dot from hostname only
+    const u = new URL(raw);
+    u.hostname = u.hostname.replace(/\.$/, '');
+    const ws = u.toString();
 
-    // 4) open page and run axe
+    browser = await puppeteer.connect({ browserWSEndpoint: ws, ignoreHTTPSErrors: true });
+
     const page = await browser.newPage();
     await page.goto(site.url, { waitUntil: 'networkidle0', timeout: 60000 });
 
     const axe = new AxePuppeteer(page);
     const analysis = await axe.analyze();
 
-    // 5) normalize and save issues
     const violations = analysis.violations || [];
     const issues = violations
       .flatMap(v =>
@@ -72,10 +68,7 @@ export async function POST(req: Request) {
       if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
 
-    const { error: updErr } = await supabase
-      .from('scans')
-      .update({ score })
-      .eq('id', scanRow.id);
+    const { error: updErr } = await supabase.from('scans').update({ score }).eq('id', scanRow.id);
     if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
 
     return NextResponse.json({ scanId: scanRow.id, score });
